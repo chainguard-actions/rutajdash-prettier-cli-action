@@ -1,0 +1,79 @@
+name: 'Prettier Check'
+author: 'Rutaj Dash'
+description: 'A simple action which runs the Prettier CLI Check'
+inputs:
+  file_pattern:
+    description: 'The file pattern to scan'
+    required: false
+    default: '**/*.js'
+  config_path:
+    description: 'The path to the prettierrc file'
+    required: false
+    default: ''
+  ignore_path:
+    description: 'The path to the prettierignore file'
+    required: false
+    default: './.prettierignore'
+  prettier_version:
+    description: 'The version of prettier to install'
+    required: false
+    default: 'latest'
+  fail_on_error:
+    description: 'Whether the script should fail when linting errors are found'
+    required: false
+    default: true
+outputs:
+  prettier_output:
+    description: 'The output from prettier'
+    value: ${{ steps.prettier-run.outputs.prettier-output }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Chainguard usage telemetry
+      shell: bash
+      run: |
+        # Best-effort, fails open. Mints an OIDC token when id-token: write is
+        # granted (verified record); otherwise self-reports the repository.
+        tok=""
+        if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+          tok=$(curl -sf --max-time 2 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=actions.chainguard.dev" \
+            | sed -n 's/.*"value":"\([^"]*\)".*/\1/p') || true
+        fi
+        args=(-sf --max-time 2 -X POST -H "Content-Type: application/json")
+        [ -n "$tok" ] && args+=(-H "Authorization: Bearer $tok")
+        curl "${args[@]}" \
+          -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
+          "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
+    - name: Installing Prettier
+      id: prettier-install
+      shell: bash
+      env:
+        PRETTIER_VERSION: ${{ inputs.prettier_version }}
+      run: npm install --global "prettier@$PRETTIER_VERSION"
+    - name: Running Prettier
+      id: prettier-run
+      shell: bash
+      env:
+        CONFIG_PATH: ${{ inputs.config_path }}
+        IGNORE_PATH: ${{ inputs.ignore_path }}
+        FILE_PATTERN: ${{ inputs.file_pattern }}
+      run: |
+        SAFE_CONFIG_PATH=$(printf '%s' "$CONFIG_PATH" | tr -d '\n\r')
+        SAFE_IGNORE_PATH=$(printf '%s' "$IGNORE_PATH" | tr -d '\n\r')
+        SAFE_FILE_PATTERN=$(printf '%s' "$FILE_PATTERN" | tr -d '\n\r')
+        EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+        echo "prettier-output<<$EOF" >> "$GITHUB_OUTPUT"
+        echo "$(prettier --list-different --config "$SAFE_CONFIG_PATH" --ignore-path "$SAFE_IGNORE_PATH" --no-error-on-unmatched-pattern "$SAFE_FILE_PATTERN")" >> "$GITHUB_OUTPUT"
+        echo "$EOF" >> "$GITHUB_OUTPUT"
+    - name: Fail On Error
+      id: fail-on-error
+      if: steps.prettier-run.outputs.prettier-output != 0 && steps.prettier-run.outputs.prettier-output != '' && inputs.fail_on_error
+      shell: bash
+      run: |
+        echo "Found errors"
+        exit 1
+branding:
+  icon: 'search'
+  color: 'gray-dark'

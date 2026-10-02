@@ -1,0 +1,34 @@
+name: Test basic usage - formatted files pass
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify npm is available
+        run: |
+          node --version
+          npm --version
+
+      - id: action
+        uses: .
+        with:
+          file_pattern: "${{ github.workspace }}/tests/fixtures/prettier/formatted/hello.js"
+          config_path: "${{ github.workspace }}/tests/fixtures/prettier/.prettierrc"
+          ignore_path: "${{ github.workspace }}/tests/fixtures/prettier/.prettierignore"
+          fail_on_error: "false"
+
+      - name: Assert output is captured and action succeeded
+        env:
+          OUTPUT: ${{ steps.action.outputs.prettier_output }}
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "prettier_output: '$OUTPUT'"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected action to succeed, got '$OUTCOME'"
+            exit 1
+          fi
+          echo "PASS: action completed successfully"

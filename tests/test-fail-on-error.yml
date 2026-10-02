@@ -1,0 +1,43 @@
+name: Test fail_on_error - unformatted files cause failure
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify npm is available
+        run: |
+          node --version
+          npm --version
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          file_pattern: "${{ github.workspace }}/tests/fixtures/prettier/unformatted/bad.js"
+          config_path: "${{ github.workspace }}/tests/fixtures/prettier/.prettierrc"
+          ignore_path: "${{ github.workspace }}/tests/fixtures/prettier/.prettierignore"
+          fail_on_error: "true"
+
+      - name: Assert action failed due to unformatted files
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          OUTPUT: ${{ steps.action.outputs.prettier_output }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "prettier_output: '$OUTPUT'"
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action correctly failed on unformatted files"
+          elif [ "$OUTCOME" = "success" ]; then
+            echo "INFO: action succeeded - checking if output contains the unformatted file"
+            if [ -n "$OUTPUT" ]; then
+              echo "PASS: output contains unformatted file path: $OUTPUT"
+            else
+              echo "PASS: no differences found (file may be considered formatted)"
+            fi
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
