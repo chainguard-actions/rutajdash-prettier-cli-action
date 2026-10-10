@@ -60,12 +60,23 @@ runs:
         IGNORE_PATH: ${{ inputs.ignore_path }}
         FILE_PATTERN: ${{ inputs.file_pattern }}
       run: |
-        SAFE_CONFIG_PATH=$(printf '%s' "$CONFIG_PATH" | tr -d '\n\r')
-        SAFE_IGNORE_PATH=$(printf '%s' "$IGNORE_PATH" | tr -d '\n\r')
-        SAFE_FILE_PATTERN=$(printf '%s' "$FILE_PATTERN" | tr -d '\n\r')
+        # Build optional flags for config and ignore path
+        set --
+        [ -n "$CONFIG_PATH" ] && set -- "$@" --config "$CONFIG_PATH"
+        [ -n "$IGNORE_PATH" ] && set -- "$@" --ignore-path "$IGNORE_PATH"
+
+        # Tokenize file_pattern (may be a whitespace-separated list of globs)
+        patterns=()
+        if [ -n "$FILE_PATTERN" ]; then
+          while IFS= read -r -d '' t; do patterns+=("$t"); done \
+            < <(printf '%s' "$FILE_PATTERN" | xargs printf '%s\0')
+        fi
+
+        prettier_out="$(prettier --list-different --no-error-on-unmatched-pattern "$@" "${patterns[@]}")"
+        safe_out="$(printf '%s' "$prettier_out" | tr -d '\n\r')"
         EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
         echo "prettier-output<<$EOF" >> "$GITHUB_OUTPUT"
-        echo "$(prettier --list-different --config "$SAFE_CONFIG_PATH" --ignore-path "$SAFE_IGNORE_PATH" --no-error-on-unmatched-pattern "$SAFE_FILE_PATTERN")" >> "$GITHUB_OUTPUT"
+        echo "$safe_out" >> "$GITHUB_OUTPUT"
         echo "$EOF" >> "$GITHUB_OUTPUT"
     - name: Fail On Error
       id: fail-on-error

