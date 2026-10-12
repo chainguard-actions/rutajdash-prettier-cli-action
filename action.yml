@@ -51,7 +51,7 @@ runs:
       shell: bash
       env:
         PRETTIER_VERSION: ${{ inputs.prettier_version }}
-      run: npm install --global "prettier@$PRETTIER_VERSION"
+      run: npm install --global "prettier@${PRETTIER_VERSION}"
     - name: Running Prettier
       id: prettier-run
       shell: bash
@@ -60,24 +60,20 @@ runs:
         IGNORE_PATH: ${{ inputs.ignore_path }}
         FILE_PATTERN: ${{ inputs.file_pattern }}
       run: |
-        # Build optional flags for config and ignore path
-        set --
-        [ -n "$CONFIG_PATH" ] && set -- "$@" --config "$CONFIG_PATH"
-        [ -n "$IGNORE_PATH" ] && set -- "$@" --ignore-path "$IGNORE_PATH"
-
-        # Tokenize file_pattern (may be a whitespace-separated list of globs)
         patterns=()
         if [ -n "$FILE_PATTERN" ]; then
           while IFS= read -r -d '' t; do patterns+=("$t"); done \
             < <(printf '%s' "$FILE_PATTERN" | xargs printf '%s\0')
         fi
-
-        prettier_out="$(prettier --list-different --no-error-on-unmatched-pattern "$@" "${patterns[@]}")"
-        safe_out="$(printf '%s' "$prettier_out" | tr -d '\n\r')"
         EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-        echo "prettier-output<<$EOF" >> "$GITHUB_OUTPUT"
-        echo "$safe_out" >> "$GITHUB_OUTPUT"
-        echo "$EOF" >> "$GITHUB_OUTPUT"
+        echo "prettier-output<<$EOF" >> $GITHUB_OUTPUT
+        out="$(prettier --list-different \
+          ${CONFIG_PATH:+--config "$CONFIG_PATH"} \
+          ${IGNORE_PATH:+--ignore-path "$IGNORE_PATH"} \
+          --no-error-on-unmatched-pattern \
+          "${patterns[@]}")" || true
+        echo "$out" >> $GITHUB_OUTPUT
+        echo "$EOF" >> $GITHUB_OUTPUT
     - name: Fail On Error
       id: fail-on-error
       if: steps.prettier-run.outputs.prettier-output != 0 && steps.prettier-run.outputs.prettier-output != '' && inputs.fail_on_error
