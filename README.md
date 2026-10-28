@@ -6,9 +6,9 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 
 ## Versions
 
-| Version | Tag | Upstream commit |
-|---------|-----|-----------------|
-| v1.0.2 | [`v1.0.2`](https://github.com/chainguard-actions/rutajdash-prettier-cli-action/tree/v1.0.2) | [`d42c432`](https://github.com/rutajdash/prettier-cli-action/commit/d42c4325a3b344f3bd4be482bc34de521998d557) |
+| Version | Tag | Upstream commit | Hardening report |
+|---------|-----|-----------------|------------------|
+| v1.0.2 | [`v1.0.2`](https://github.com/chainguard-actions/rutajdash-prettier-cli-action/tree/v1.0.2) | [`d42c432`](https://github.com/rutajdash/prettier-cli-action/commit/d42c4325a3b344f3bd4be482bc34de521998d557) | [`HARDENING.md`](https://github.com/chainguard-actions/rutajdash-prettier-cli-action/blob/v1.0.2/HARDENING.md) |
 
 ## Privacy
 
